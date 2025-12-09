@@ -15,15 +15,24 @@ log = logging.getLogger("dream")
 METADATA_PATH = "model_metadata.json"
 
 
+def _model_dtype(model: DreamCoherenceModel) -> torch.dtype:
+    """Get the dtype of the base model parameters."""
+    try:
+        return next(model.base_model.parameters()).dtype
+    except StopIteration:
+        return torch.float32
+
+
 def expand_lora_rank(model: DreamCoherenceModel, new_rank: int) -> List[nn.Parameter]:
     """Add a simple low-rank adapter on top of the final hidden states."""
     hidden = _hidden_dim(model.base_model)
     device = model_device(model)
+    dtype = _model_dtype(model)
     down = nn.Linear(hidden, new_rank, bias=False)
     up = nn.Linear(new_rank, hidden, bias=False)
     nn.init.xavier_uniform_(down.weight)
     nn.init.zeros_(up.weight)
-    adapter = nn.Sequential(down, nn.ReLU(), up).to(device)
+    adapter = nn.Sequential(down, nn.ReLU(), up).to(device=device, dtype=dtype)
     if not hasattr(model, "lora_adapters"):
         model.lora_adapters = nn.ModuleList()
     model.lora_adapters.append(adapter)
@@ -36,12 +45,13 @@ def widen_mlp_block(model: DreamCoherenceModel, delta_neurons: int) -> List[nn.P
     """Attach an extra MLP expansion block applied residually after base model."""
     hidden = _hidden_dim(model.base_model)
     device = model_device(model)
+    dtype = _model_dtype(model)
     mlp = nn.Sequential(
         nn.LayerNorm(hidden),
         nn.Linear(hidden, hidden + delta_neurons),
         nn.ReLU(),
         nn.Linear(hidden + delta_neurons, hidden),
-    ).to(device)
+    ).to(device=device, dtype=dtype)
     if not hasattr(model, "mlp_expansions"):
         model.mlp_expansions = nn.ModuleList()
     model.mlp_expansions.append(mlp)
@@ -54,9 +64,10 @@ def add_attention_heads(model: DreamCoherenceModel, delta_heads: int) -> List[nn
     """Add an auxiliary attention block with extra heads, applied residually."""
     hidden = _hidden_dim(model.base_model)
     device = model_device(model)
+    dtype = _model_dtype(model)
     current_heads = getattr(model.base_model.config, "num_attention_heads", 4)
     nhead = current_heads + max(1, delta_heads)
-    attn = nn.MultiheadAttention(embed_dim=hidden, num_heads=nhead, batch_first=True).to(device)
+    attn = nn.MultiheadAttention(embed_dim=hidden, num_heads=nhead, batch_first=True).to(device=device, dtype=dtype)
     if not hasattr(model, "aux_attention"):
         model.aux_attention = nn.ModuleList()
     model.aux_attention.append(attn)
@@ -70,12 +81,13 @@ def add_transformer_layer(model: DreamCoherenceModel) -> List[nn.Parameter]:
     hidden = _hidden_dim(model.base_model)
     nhead = getattr(model.base_model.config, "num_attention_heads", 4)
     device = model_device(model)
-    layer = nn.TransformerEncoderLayer(d_model=hidden, nhead=nhead, batch_first=True).to(device)
+    dtype = _model_dtype(model)
+    layer = nn.TransformerEncoderLayer(d_model=hidden, nhead=nhead, batch_first=True).to(device=device, dtype=dtype)
     if not hasattr(model, "extra_layers"):
         model.extra_layers = nn.ModuleList()
     model.extra_layers.append(layer)
     model.new_parameters += list(layer.parameters())
-    log.info("Added 1 Transformer layer (d_model=%d nhead=%d)", hidden, nhead)
+    log.info("Added 1 Transformer layer (d_model=%d nhead=%d, dtype=%s)", hidden, nhead, dtype)
     return list(layer.parameters())
 
 
