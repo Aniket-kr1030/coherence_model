@@ -181,6 +181,13 @@ def train_on_datasets(
     tokenizer, model, metadata = load_model_with_metadata()
     device = model.device
     
+    # Detect TPU and import XLA module if needed
+    is_tpu = str(device).startswith("xla")
+    xm = None
+    if is_tpu:
+        import torch_xla.core.xla_model as xm
+        log.info("TPU detected - using XLA training with mark_step()")
+    
     # Freeze base model parameters
     for param in model.base_model.parameters():
         param.requires_grad = False
@@ -247,6 +254,10 @@ def train_on_datasets(
                         optimizer.zero_grad()
                         loss.backward()
                         optimizer.step()
+                        
+                        # CRITICAL for TPU: mark_step() tells XLA to execute the graph
+                        if is_tpu:
+                            xm.mark_step()
                         
                         elapsed = time.time() - start
                         remaining = (elapsed / (bi + 1)) * (total_batches - bi - 1)
