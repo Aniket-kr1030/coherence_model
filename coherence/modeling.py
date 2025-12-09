@@ -14,6 +14,16 @@ warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL 1.1.
 
 
 def _device() -> torch.device:
+    # Try TPU first (for Colab TPU runtime)
+    try:
+        import torch_xla.core.xla_model as xm
+        return xm.xla_device()
+    except ImportError:
+        pass
+    except Exception:
+        pass
+    
+    # Fallback to GPU/MPS/CPU
     if torch.backends.mps.is_available():
         return torch.device("mps")
     if torch.cuda.is_available():
