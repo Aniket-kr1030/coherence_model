@@ -41,6 +41,12 @@ def main() -> None:
         help="Epochs for dataset training.",
     )
     parser.add_argument("--steps", type=int, default=10, help="Number of steps for simulation/training.")
+    parser.add_argument(
+        "--expand",
+        type=int,
+        default=0,
+        help="Number of extra Transformer layers to add before training (e.g., --expand 2)",
+    )
     args = parser.parse_args()
 
     if args.mode == "chat":
@@ -67,6 +73,28 @@ def main() -> None:
         log.info("Coherence report: %s", state.coherence_report())
     elif args.mode == "train_datasets":
         from coherence.training import train_on_datasets
+        from coherence.expansion import add_transformer_layer, save_model_with_metadata
+        
+        # Load model first to potentially expand it
+        tokenizer, model, meta = load_model_with_metadata()
+        
+        # Add extra layers if requested
+        if args.expand > 0:
+            current_layers = len(getattr(model, "extra_layers", []))
+            layers_to_add = args.expand - current_layers
+            for i in range(layers_to_add):
+                add_transformer_layer(model)
+                log.info("Added extra Transformer layer %d/%d", current_layers + i + 1, args.expand)
+            # Save the expanded model immediately
+            if layers_to_add > 0:
+                meta["expansions"] = {
+                    "extra_layers": len(model.extra_layers),
+                    "extra_attn_blocks": len(getattr(model, "aux_attention", [])),
+                    "mlp_expansions": len(getattr(model, "mlp_expansions", [])),
+                    "lora_expansions": len(getattr(model, "lora_adapters", [])),
+                }
+                save_model_with_metadata(model, meta)
+                log.info("Saved expanded model with %d layers", args.expand)
 
         train_on_datasets(datasets_dir=args.datasets_dir, batch_size=args.batch_size, epochs=args.epochs)
 
