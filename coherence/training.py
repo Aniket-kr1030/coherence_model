@@ -195,12 +195,6 @@ def train_on_datasets(
          return
 
     optimizer = optim.AdamW(trainable_params, lr=lr)
-    
-    # Enable mixed precision training for CUDA to prevent NaN from gradient overflow
-    use_amp = device.type == "cuda"
-    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
-    if use_amp:
-        log.info("Using mixed precision training (AMP) for CUDA")
 
     datasets = [d for d in os.listdir(datasets_dir) if os.path.isdir(os.path.join(datasets_dir, d))]
     
@@ -236,21 +230,15 @@ def train_on_datasets(
                         if not batch_texts:
                             continue
                         batch_tok = tokenizer(batch_texts, return_tensors="pt", padding=True, truncation=True, max_length=512).to(device)
-                        
-                        # Mixed precision forward pass
-                        with torch.cuda.amp.autocast(enabled=use_amp):
-                            outputs = model(
-                                input_ids=batch_tok["input_ids"],
-                                attention_mask=batch_tok.get("attention_mask"),
-                                labels=batch_tok["input_ids"],
-                            )
-                            loss = outputs["loss"]
-                        
+                        outputs = model(
+                            input_ids=batch_tok["input_ids"],
+                            attention_mask=batch_tok.get("attention_mask"),
+                            labels=batch_tok["input_ids"],
+                        )
+                        loss = outputs["loss"]
                         optimizer.zero_grad()
-                        # Scaled backward pass to prevent gradient underflow
-                        scaler.scale(loss).backward()
-                        scaler.step(optimizer)
-                        scaler.update()
+                        loss.backward()
+                        optimizer.step()
                         
                         elapsed = time.time() - start
                         remaining = (elapsed / (bi + 1)) * (total_batches - bi - 1)

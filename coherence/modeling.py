@@ -52,11 +52,13 @@ def load_model():
     log = getLogger("dream")
     log.info("Loading model %s on %s", MODEL_ID, device)
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-    dtype = torch.float32 if device.type == "mps" else (torch.float16 if device.type != "cpu" else torch.float32)
+    # Use FP32 everywhere for training stability (model is small enough at 1.1B params)
+    # FP16 causes gradient overflow issues that are hard to debug
+    dtype = torch.float32
     model = AutoModelForCausalLM.from_pretrained(
         MODEL_ID,
         device_map="auto" if device.type != "cpu" else None,
-        dtype=dtype,
+        torch_dtype=dtype,
     )
     return tokenizer, model
 
