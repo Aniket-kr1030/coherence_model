@@ -52,14 +52,33 @@ def load_model():
     log = getLogger("dream")
     log.info("Loading model %s on %s", MODEL_ID, device)
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-    # Use FP32 everywhere for training stability (model is small enough at 1.1B params)
-    # FP16 causes gradient overflow issues that are hard to debug
-    dtype = torch.float32
-    model = AutoModelForCausalLM.from_pretrained(
-        MODEL_ID,
-        device_map="auto" if device.type != "cpu" else None,
-        torch_dtype=dtype,
-    )
+    
+    # Check if we're on TPU/XLA
+    is_tpu = str(device).startswith("xla")
+    
+    if is_tpu:
+        # TPU: Load on CPU first, then move to TPU
+        # Use bfloat16 which TPU handles well
+        log.info("TPU detected - loading model on CPU first, then moving to XLA device")
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_ID,
+            torch_dtype=torch.bfloat16,  # TPU prefers bfloat16
+            low_cpu_mem_usage=True,
+        )
+        model = model.to(device)
+        log.info("Model moved to TPU: %s", device)
+    else:
+        # GPU/MPS/CPU: Use standard loading
+        # FP32 for training stability
+        dtype = torch.float32
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_ID,
+            device_map="auto" if device.type not in ("cpu", "mps") else None,
+            torch_dtype=dtype,
+        )
+        if device.type == "mps":
+            model = model.to(device)
+    
     return tokenizer, model
 
 
