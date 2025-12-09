@@ -62,7 +62,7 @@ def load_model():
         log.info("TPU detected - loading model on CPU first, then moving to XLA device")
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_ID,
-            torch_dtype=torch.bfloat16,  # TPU prefers bfloat16
+            dtype=torch.bfloat16,  # TPU prefers bfloat16
             low_cpu_mem_usage=True,
         )
         model = model.to(device)
@@ -74,7 +74,7 @@ def load_model():
         model = AutoModelForCausalLM.from_pretrained(
             MODEL_ID,
             device_map="auto" if device.type not in ("cpu", "mps") else None,
-            torch_dtype=dtype,
+            dtype=dtype,
         )
         if device.type == "mps":
             model = model.to(device)
