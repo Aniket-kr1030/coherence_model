@@ -104,7 +104,10 @@ def save_model_with_metadata(model: DreamCoherenceModel, metadata: Dict, path: s
     # Save only the diff (head, adapters, etc.) to save space and avoid meta-tensor issues
     full_state = model.state_dict()
     filtered_state = {k: v for k, v in full_state.items() if not k.startswith("base_model.")}
-    torch.save(filtered_state, "model_weights.pt")
+    
+    # Move all tensors to CPU for device-agnostic saving (fixes XLA/TPU loading issues)
+    cpu_state = {k: v.cpu() for k, v in filtered_state.items()}
+    torch.save(cpu_state, "model_weights.pt")
     
     with open(path, "w") as f:
         json.dump(metadata, f, indent=2)
@@ -130,7 +133,8 @@ def load_model_with_metadata(path: str = METADATA_PATH) -> Tuple[object, DreamCo
         expand_lora_rank(model, new_rank=8)
 
     if os.path.exists("model_weights.pt"):
-        state = torch.load("model_weights.pt", map_location=model_device(model))
+        # Always load to CPU first to avoid XLA/device issues, then tensors move when loaded into model
+        state = torch.load("model_weights.pt", map_location="cpu")
         
         # Filter out mismatched shapes AND base_model weights (to recover from corrupted saves)
         model_state = model.state_dict()
