@@ -174,6 +174,7 @@ def train_on_datasets(
     lr: float = 5e-5,
     epochs: int = 1,
     auto_save: bool = True,
+    dataset_filter: list = None,
 ) -> None:
     """Train DreamCoherenceModel on local HuggingFace-style datasets with ETA logging."""
     # Load persistent model
@@ -196,7 +197,14 @@ def train_on_datasets(
 
     optimizer = optim.AdamW(trainable_params, lr=lr)
 
-    datasets = [d for d in os.listdir(datasets_dir) if os.path.isdir(os.path.join(datasets_dir, d))]
+    all_datasets = [d for d in os.listdir(datasets_dir) if os.path.isdir(os.path.join(datasets_dir, d))]
+    
+    # Apply filter if provided
+    if dataset_filter:
+        datasets = [d for d in all_datasets if d in dataset_filter]
+        log.info("Filtering datasets: %s (from %d available)", datasets, len(all_datasets))
+    else:
+        datasets = all_datasets
     
     try:
         for dataset in datasets:

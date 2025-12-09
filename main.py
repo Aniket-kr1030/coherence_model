@@ -47,6 +47,12 @@ def main() -> None:
         default=0,
         help="Number of extra Transformer layers to add before training (e.g., --expand 2)",
     )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="",
+        help="Comma-separated list of dataset names to train on (e.g., --dataset anli,coqa). Empty = all datasets.",
+    )
     args = parser.parse_args()
 
     if args.mode == "chat":
@@ -96,7 +102,10 @@ def main() -> None:
                 save_model_with_metadata(model, meta)
                 log.info("Saved expanded model with %d layers", args.expand)
 
-        train_on_datasets(datasets_dir=args.datasets_dir, batch_size=args.batch_size, epochs=args.epochs)
+        # Parse dataset filter
+        dataset_filter = [d.strip() for d in args.dataset.split(",") if d.strip()] if args.dataset else None
+
+        train_on_datasets(datasets_dir=args.datasets_dir, batch_size=args.batch_size, epochs=args.epochs, dataset_filter=dataset_filter)
 
 
 if __name__ == "__main__":
