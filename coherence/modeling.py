@@ -194,17 +194,20 @@ def load_dream_model(num_diag: int | None = None):
     
     # Do NOT call model.to(_device()) blindly if base_model uses device_map="auto"
     # as it might conflict with Accelerate hooks or cause meta-tensor errors.
-    # Instead, we ensure our new components are on the same device as the base model.
+    # Instead, we ensure our new components are on the same device AND dtype as the base model.
     try:
-        dev = next(base_model.parameters()).device
+        base_param = next(base_model.parameters())
+        dev = base_param.device
+        dtype = base_param.dtype
     except StopIteration:
         dev = _device()
+        dtype = torch.float32
         
-    model.head.to(dev)
+    model.head.to(device=dev, dtype=dtype)
     # Also ensure any other components are moved if they were added (initially empty though)
-    model.extra_layers.to(dev)
-    model.aux_attention.to(dev)
-    model.mlp_expansions.to(dev)
-    model.lora_adapters.to(dev)
+    model.extra_layers.to(device=dev, dtype=dtype)
+    model.aux_attention.to(device=dev, dtype=dtype)
+    model.mlp_expansions.to(device=dev, dtype=dtype)
+    model.lora_adapters.to(device=dev, dtype=dtype)
     
     return tokenizer, model
